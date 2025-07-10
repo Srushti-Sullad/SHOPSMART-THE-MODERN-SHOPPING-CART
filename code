@@ -1,0 +1,152 @@
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+// Set the LCD address to 0x27 for a 20x4 LCD
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+void printDetail(uint8_t type, int value);
+const char* ssid = "Abhi2128";
+const char* password = "28102002";
+ESP8266WebServer server(80);
+String page = "";
+char input[12];
+int count = 0;
+int a;
+int p1 = 0, p2 = 0, p3 = 0, p4 = 0;
+int c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+double total = 0;
+int count_prod = 0;
+int led1 = D5;  // green
+int led2 = D7;  // red
+const char* rfidTags[] = {
+  "09003F027347", // Tag 1
+  "09003D93892E", // Replace with actual tag 2 ID
+  "4B008884ACEB", // Replace with actual tag 3 ID
+  "09003F026E5A"  // Replace with actual tag 4 ID
+};
+const char* itemNames[] = {
+  "Sugar",
+  "Milk",
+  "Biscuits",
+  "Dairy Milk"
+}; const double itemPrices[] = {
+ 35.00, // Price for Sugar
+  20.00, // Price for Milk
+  10.00, // Price for Biscuits
+  50.00  // Price for Dairy Milk
+};
+void setup() {
+  pinMode(D4, INPUT_PULLUP);
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  Serial.begin(9600);
+  WiFi.begin(ssid, password);
+  Wire.begin(D2, D1);  // (SDA,SCL)
+  lcd.begin();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("WELCOME TO");
+  lcd.setCursor(0, 1);
+  lcd.print("SMART TROLLY");
+  delay(2000);
+  lcd.clear();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    lcd.setCursor(3, 0);
+    lcd.print("WiFi Connecting...  ");
+  }
+  Serial.print(WiFi.localIP());
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connected");
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP());
+  delay(2000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(" PLZ SCAN ITEMS");
+  lcd.setCursor(0, 1);
+  lcd.print("    TO CART");
+  
+  server.on("/", []() {
+    page = "<html><head><title>Smart Shopping Cart</title></head><style type=\"text/css\">";
+    page += "table{border-collapse: collapse;}th {background-color: #4444db ;color: white;}table,td {border: 4px solid black;font-size: x-large;";
+    page += "text-align:center;border-style: groove;border-color: rgb(255,0,0);}</style><body><center>";
+    page += "<h1>Welcome To Smart Cart Trolly</h1><br><br><table style=\"width: 1200px;height: 450px;\"><tr>";
+    page += "<th>ITEMS</th><th>QUANTITY</th><th>COST</th></tr><tr><td>" + String(itemNames[0]) + "</td><td>" + String(p1) + "</td><td>" + String(c1) + "</td></tr>";
+    page += "<tr><td>" + String(itemNames[1]) + "</td><td>" + String(p2) + "</td><td>" + String(c2) + "</td></tr><tr><td>" + String(itemNames[2]) + "</td><td>" + String(p3) + "</td><td>" + String(c3) + "</td>";
+    page += "</tr><tr><td>" + String(itemNames[3]) + "</td><td>" + String(p4) + "</td><td>" + String(c4) + "</td></tr><tr><th>Grand Total</th><th>" + String(count_prod) + "</th><th>" + String(total) + "</th>";
+    page += "</tr></table><br><input type=\"button\" name=\"Pay Online Now\" value=\"Pay Online Now\" style=\"width: 200px;height: 50px\"></center></body></html>";
+    page += "<meta http-equiv=\"refresh\" content=\"2\">";
+    server.send(200, "text/html", page);
+  });
+  server.begin();
+}
+void loop() {
+  a = digitalRead(D4);
+  if (Serial.available()) {
+    count = 0;
+    while (Serial.available() && count < 12) {
+      input[count] = Serial.read();
+      count++;
+      delay(5);
+    }
+    if (count == 12) {
+      for (int i = 0; i < 4; i++) {
+        if (strncmp(input, rfidTags[i], 12) == 0) {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          if (a == 1) { // Adding item
+            lcd.print(itemNames[i] + String(" Added"));
+            lcd.setCursor(0, 1);
+            lcd.print("Price(Rs):" + String(itemPrices[i]));
+            digitalWrite(led1, HIGH);
+            delay(2000);
+            total += itemPrices[i];
+            count_prod++;
+            digitalWrite(led1, LOW);
+            switch (i) {
+              case 0: p1++; c1 += itemPrices[i]; break;
+              case 1: p2++; c2 += itemPrices[i]; break;
+              case 2: p3++; c3 += itemPrices[i]; break;
+              case 3: p4++; c4 += itemPrices[i]; break;
+            }
+          } else { // Removing item
+            lcd.print(itemNames[i] + String(" Removed"));
+            if (i == 0 && p1 > 0 || i == 1 && p2 > 0 || i == 2 && p3 > 0 || i == 3 && p4 > 0) {
+              digitalWrite(led2, HIGH);
+              delay(2000);
+              total -= itemPrices[i];
+              count_prod--;
+              digitalWrite(led2, LOW);
+              switch (i) {
+                case 0: p1--; c1 -= itemPrices[i]; break;
+                case 1: p2--; c2 -= itemPrices[i]; break;
+                case 2: p3--; c3 -= itemPrices[i]; break;
+                case 3: p4--; c4 -= itemPrices[i]; break;
+              }
+            } else {
+              lcd.clear();
+              lcd.setCursor(0, 0);
+              lcd.print(" PLZ SCAN ITEMS");
+              lcd.setCursor(0, 1);
+              lcd.print("   TO CART");
+            }
+          }
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Total Price:-");
+          lcd.setCursor(0, 1);
+          lcd.print(total);
+          break;
+        }
+      }
+    } else {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(" PLZ SCAN ITEMS");
+      lcd.setCursor(0, 1);
+      lcd.print("   TO CART");
+    }
+  }
+server.handleClient();}
